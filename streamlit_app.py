@@ -44,6 +44,13 @@ def get_employee_id(emp_id):
     return result[0] if result else 0
 
 
+def get_employee_salary(emp_id):
+    mycursor = mydb.cursor()
+    mycursor.execute("SELECT salary from employee where employeeid = %s", (emp_id,))
+    result = mycursor.fetchone()
+    return result[0] if result else 0
+
+
 def get_customer_id(cust_phone):
     mycursor = mydb.cursor()
     mycursor.execute("SELECT customerid FROM customer WHERE phone = %s", (cust_phone,))
@@ -66,16 +73,26 @@ def main():
     if option == "Create":
         st.subheader("Create record")
 
-        option_create = st.selectbox("Select option",
-                                     ("New Purchase", "New Employee", "New Product"))
+        option_create = st.radio("Select option",
+                                 ("New Purchase", "New Employee", "New Product"), horizontal=True)
 
         # New Purchase
         if option_create == "New Purchase":
-            emp_id = st.number_input("Employee ID", min_value=0, step=1, format='%d')
-            date = st.date_input("Today's date")
+            col1, col2 = st.columns(2)
+            with col1:
+                branch_id = st.number_input("BranchID", min_value=0, step=1, format='%d')
+                date = st.date_input("Today's date")
+            with col2:
+                emp_id = st.number_input("Employee ID", min_value=0, step=1, format='%d')
+
             cust_name = st.text_input("Customer name")
-            cust_email = st.text_input("Customer email")
-            cust_phone = st.text_input("Customer Phone number")
+
+            col1, col2 = st.columns(2)
+            with col1:
+                cust_phone = st.text_input("Customer Phone number")
+            with col2:
+                cust_email = st.text_input("Customer email")
+
             cust_addr = st.text_input("Customer Address")
 
             cust_id, flag = get_customer_id(cust_phone)
@@ -88,14 +105,17 @@ def main():
             prod_dict = {}
             for i in range(int(unique_items)):
                 prod_id = st.number_input(f"Product {i + 1} ID", min_value=0, step=1, format='%d')
-                if get_product_quantity(prod_id) > 0:
-                    try:
-                        prod_quantity = st.slider(f"Product {i + 1} quantity", 0, get_product_quantity(prod_id), 1)
-                    except StreamlitAPIException as e:
-                        st.error("Enter correct amount")
+                if prod_id not in prod_dict:
+                    if get_product_quantity(prod_id) > 0:
+                        try:
+                            prod_quantity = st.slider(f"Product {i + 1} quantity", 0, get_product_quantity(prod_id), 1)
+                        except StreamlitAPIException as e:
+                            st.error("Enter correct amount")
+                    else:
+                        st.warning("Product out of stock")
+                        continue
                 else:
-                    st.warning("Product out of stock")
-                    continue
+                    st.warning("Product already selected")
                 prod_dict[prod_id] = prod_quantity
 
                 product_price = get_product_price(prod_id)
@@ -110,8 +130,8 @@ def main():
                         val_cust = (cust_id, cust_name, cust_email, cust_phone, cust_addr)
                         mycursor.execute(sql_cust, val_cust)
 
-                    sql_sale = "insert into sale values(%s,%s,%s,%s,%s)"
-                    val_sale = (sale_id, date, total_price, cust_id, emp_id)
+                    sql_sale = "insert into sale values(%s,%s,%s,%s,%s,%s)"
+                    val_sale = (sale_id, branch_id, date, total_price, cust_id, emp_id)
                     mycursor.execute(sql_sale, val_sale)
 
                     for prod_id, prod_quantity in prod_dict.items():
@@ -132,19 +152,28 @@ def main():
 
                 except IntegrityError as e:
                     st.error("Invalid input")
+                    st.write(e)
 
         # New Employee
         elif option_create == "New Employee":
-            emp_id = st.number_input("EmployeeID", min_value=0, step=1, format='%d')
+            col1, col2 = st.columns(2)
+            with col1:
+                branch_id = st.number_input("BranchID", min_value=0, step=1, format='%d')
+            with col2:
+                emp_id = st.number_input("EmployeeID", min_value=0, step=1, format='%d')
             emp_name = st.text_input("Name")
-            hire_date = st.date_input("Hire date")
-            position = st.text_input("Position")
+
+            col1, col2 = st.columns(2)
+            with col1:
+                hire_date = st.date_input("Hire date")
+            with col2:
+                position = st.text_input("Position")
             salary = st.number_input("Salary (in dollars)", min_value=1000, step=1000)
 
             if st.button("Submit record"):
                 try:
-                    sql_emp = "insert into employee values(%s,%s,%s,%s,%s)"
-                    val_emp = (emp_id, emp_name, position, salary, hire_date)
+                    sql_emp = "insert into employee values(%s %s,%s,%s,%s,%s)"
+                    val_emp = (branch_id, emp_id, emp_name, position, salary, hire_date)
                     mycursor.execute(sql_emp, val_emp)
 
                     mydb.commit()
@@ -153,17 +182,18 @@ def main():
                     time.sleep(5)
                     success_message.empty()
                 except IntegrityError as e:
-                    st.error("Employee ID already exists")
+                    st.error("Invalid input")
 
         # Add new product
         elif option_create == "New Product":
-
-            prod_id = st.number_input("Product ID", min_value=0, step=1, format='%d')
-
-            prod_name = st.text_input("Name")
-            price = st.number_input("Price", min_value=0.0)
+            col1, col2 = st.columns(2)
+            with col1:
+                prod_id = st.number_input("Product ID", min_value=0, step=1, format='%d')
+                prod_name = st.text_input("Name")
+            with col2:
+                price = st.number_input("Price", min_value=0.0)
+                quantity = st.number_input("Stock quantity", min_value=0, step=1)
             desc = st.text_input("Product description")
-            quantity = st.number_input("Stock quantity", min_value=0, step=1)
 
             if st.button("Submit record"):
 
@@ -237,8 +267,11 @@ def main():
 
         # Restock product
         if option_update == "Product Restock":
-            prod_id = st.number_input("Product ID", min_value=0, step=1, format='%d')
-            prod_quantity = st.number_input("Product Quantity", min_value=0, step=5, format='%d')
+            col1, col2 = st.columns(2)
+            with col1:
+                prod_id = st.number_input("Product ID", min_value=0, step=1, format='%d')
+            with col2:
+                prod_quantity = st.number_input("Product Quantity", min_value=0, step=5, format='%d')
 
             if st.button("Submit record"):
                 sql_prodRestock = ("UPDATE product SET stockquantity = stockquantity + %s "
@@ -255,20 +288,70 @@ def main():
         elif option_update == "Employee details":
             emp_id = st.number_input("EmployeeID", min_value=0, step=1, format='%d')
 
-            update_name = st.checkbox("Update Name")
-            update_position = st.checkbox("Update Position")
-            update_salary = st.checkbox("Update Salary")
-            update_hire_date = st.checkbox("Update Hire Date")
+            if get_employee_id(emp_id):
+                col1, col2, col3, col4, col5 = st.columns(5)
+                with col1:
+                    update_branch = st.checkbox("Update Branch")
+                with col2:
+                    update_name = st.checkbox("Update Name")
+                with col3:
+                    update_position = st.checkbox("Update Position")
+                with col4:
+                    update_salary = st.checkbox("Update Salary")
+                with col5:
+                    update_hire_date = st.checkbox("Update Hire Date")
 
-            # Display selected details
-            if update_name:
-                st.write("Name")
-            if update_position:
-                st.write("Position")
-            if update_salary:
-                st.write("Salary")
-            if update_hire_date:
-                st.write("Hire Date")
+                # Display selected details
+                if update_branch:
+                    emp_branch = st.number_input("Branch", min_value=0, step=1, format='%d')
+                if update_name:
+                    emp_name = st.text_input("Name")
+                if update_position:
+                    emp_pos = st.text_input("Position")
+                if update_salary:
+                    emp_sal = st.number_input("Salary", min_value=0, step=1000, format='%d',
+                                              value=int(get_employee_salary(emp_id)))
+                if update_hire_date:
+                    emp_hd = st.date_input("Hire date")
+
+                if st.button("Update record"):
+                    try:
+                        if update_branch:
+                            query_name = 'update employee set branchid = %s where employeeid = %s'
+                            val_name = (emp_branch, emp_id)
+                            mycursor.execute(query_name, val_name)
+
+                        if update_name:
+                            query_name = 'update employee set empname = %s where employeeid = %s'
+                            val_name = (emp_name, emp_id)
+                            mycursor.execute(query_name, val_name)
+
+                        if update_position:
+                            query_name = 'update employee set position = %s where employeeid = %s'
+                            val_name = (emp_pos, emp_id)
+                            mycursor.execute(query_name, val_name)
+
+                        if update_salary:
+                            query_name = 'update employee set salary = %s where employeeid = %s'
+                            val_name = (emp_sal, emp_id)
+                            mycursor.execute(query_name, val_name)
+
+                        if update_hire_date:
+                            query_name = 'update employee set hiredate = %s where employeeid = %s'
+                            val_name = (emp_hd, emp_id)
+                            mycursor.execute(query_name, val_name)
+
+                        mydb.commit()
+                        success_message = st.empty()
+                        success_message.success("Record updated")
+                        time.sleep(5)
+                        success_message.empty()
+
+                    except IntegrityError as e:
+                        st.error("Invalid input")
+
+            else:
+                st.warning("Employee not found")
 
         elif option_update == "Product details":
 
@@ -294,11 +377,12 @@ def main():
                     desc = st.text_input("Product description")
 
                 if update_stock_quantity:
-                    quantity = st.number_input("Stock quantity", min_value=0, step=1, value=get_product_quantity(prod_id))
+                    quantity = st.number_input("Stock quantity", min_value=0, step=1,
+                                               value=get_product_quantity(prod_id))
 
                 if st.button("Update record"):
                     if update_name:
-                        query_name = 'update product set name = %s where productid = %s'
+                        query_name = 'update product set ProdName = %s where productid = %s'
                         val_name = (prod_name, prod_id)
                         mycursor.execute(query_name, val_name)
 
