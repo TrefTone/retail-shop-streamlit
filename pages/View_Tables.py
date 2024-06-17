@@ -1,13 +1,6 @@
-import streamlit as st
-import pandas as pd
-import plotly.express as px
-from sqlalchemy import create_engine
 import mysql.connector
-import numpy as np
-import time
-
-from streamlit.errors import StreamlitAPIException, DuplicateWidgetID
-from mysql.connector import IntegrityError
+import pandas as pd
+import streamlit as st
 
 mydb = mysql.connector.connect(
     host="localhost",
@@ -35,20 +28,36 @@ df_prod = pd.read_sql(query_prod, mydb)
 df_sale = pd.read_sql(query_sale, mydb)
 df_saleProduct = pd.read_sql(query_saleProd, mydb)
 
+def show_table(df):
+    st.dataframe(df, hide_index=True, use_container_width=True)
+
 st.write("Customer Table")
-st.dataframe(df_cust, hide_index=True, use_container_width=True)
+show_table(df_cust)
 
 st.write("Branch Table")
-st.dataframe(df_branch, hide_index=True, use_container_width=True)
+show_table(df_branch)
 
 st.write("Employee Table")
-st.dataframe(df_emp, hide_index=True, use_container_width=True)
+show_table(df_emp)
 
 st.write("Product Table")
-st.dataframe(df_prod, hide_index=True, use_container_width=True)
+show_table(df_prod)
 
 st.write("Sale Table")
-st.dataframe(df_sale, hide_index=True, use_container_width=True)
+show_table(df_sale)
 
 st.write("Product Sales Table")
-st.dataframe(df_saleProduct, hide_index=True, use_container_width=True)
+show_table(df_saleProduct)
+
+st.write("Apply query operations")
+with st.form(key="form1"):
+    str1 = st.text_area("Enter the query here:")
+    submit = st.form_submit_button("Submit")
+    if submit:
+        try:
+            df = pd.read_sql(str1,mydb)
+            show_table(df)
+        except mysql.connector.Error as e:
+            st.warning(e)
+        except TypeError as e:
+            pass

@@ -1,6 +1,7 @@
 import csv
 import json
 import time
+from datetime import datetime
 from json import JSONDecodeError
 
 import streamlit as st
@@ -25,9 +26,7 @@ mydb = mysql.connector.connect(
 
 mycursor = mydb.cursor()
 
-st.set_page_config(page_title="File processing", page_icon=":clipboard:", layout="wide")
-
-st.title("Upload CSV or JSON")
+st.title(":paperclip: Upload CSV or JSON")
 
 
 def get_customer_id(cust_id):
@@ -59,7 +58,8 @@ if file:
         if file.name.lower().endswith(".csv"):
             df = pd.read_csv(file)
             st.write("CSV data:")
-            st.write(df)
+            df.columns = map(str.lower, df.columns)
+            st.dataframe(df, hide_index=True, use_container_width=True)
 
         # JSON file processing
         elif file.name.lower().endswith(".json"):
@@ -106,3 +106,57 @@ if file:
             df.columns = map(str.lower, df.columns)
             st.write("Flattened JSON data:")
             st.dataframe(df, hide_index=True, use_container_width=True)
+
+        if st.button("Commit sales data"):
+            # Assuming that df is your DataFrame and mycursor is your MySQL cursor
+            if "customerid" and "phone" in df.columns:
+                queryCust = """INSERT INTO customer VALUES (%s, %s, %s, %s, %s)"""
+                for i, row in df.iterrows():
+                    cust_id, flag = get_customer_id(row["customerid"])
+                    if flag == 0:
+                        continue
+                    else:
+                        valCust = (int(row["customerid"]), str(row["custname"]),
+                                   str(row["email"]), int(row["phone"]), str(row["custaddress"]))
+                        mycursor.execute(queryCust, valCust)
+                        mydb.commit()
+                        success_message = st.empty()
+                        success_message.success("Record inserted")
+                        time.sleep(2)
+                        success_message.empty()
+            else:
+                st.info("Customer data not found")
+
+            # Assuming that df is your DataFrame and mycursor is your MySQL cursor
+            if "saleid" and "date" in df.columns:
+                df["date"] = pd.to_datetime(df['date'])
+                df_sale = df.drop_duplicates(subset='saleid')
+                querySale = """INSERT INTO sale(saleid, branchid, date, totalamount, customerid, employeeid)
+                            VALUES (%s, %s, %s, %s, %s, %s)"""
+                for i, row in df_sale.iterrows():
+                    try:
+                        valSale = (int(row["saleid"]), int(row["branchid"]), row["date"].strftime('%Y-%m-%d'),
+                                   float(row["totalamount"]), int(row["customerid"]), int(row["employeeid"]))
+                        mycursor.execute(querySale, valSale)
+                    except IntegrityError as e:
+                        pass
+
+                if "productid" in df.columns:
+                    queryProdSale = """INSERT INTO saleproduct(saleid, productid,quantity)
+                                    VALUES (%s, %s, %s)"""
+                    for i,row in df.iterrows():
+                        valProdSale = (int(row["saleid"]), int(row["productid"]), int(row["quantity"]))
+                        mycursor.execute(queryProdSale, valProdSale)
+                else:
+                    st.info("Product sale data not found")
+            else:
+                st.info("Sale data not found")
+
+            try:
+                mydb.commit()
+                success_message = st.empty()
+                success_message.success("Record inserted")
+                time.sleep(5)
+                success_message.empty()
+            except IntegrityError as e:
+                st.error("Invalid data")
